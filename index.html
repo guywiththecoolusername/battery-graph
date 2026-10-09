@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Battery Log Analyzer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #0a100d;
+    --panel: #10170f;
+    --panel-2: #141d17;
+    --border: #223026;
+    --grid: #1c2821;
+    --text: #e8eee7;
+    --muted: #82988a;
+    --muted-2: #5a6d61;
+    --capacity: #8fe3a8;
+    --ac: #e8ae4d;
+    --battery: #5fa3d8;
+    --voltage: #d88f5f;
+    --rate: #c97fd1;
+    --danger: #e36f6f;
+    --radius: 14px;
+    --tooltip-bg: #0d1712;
+    --glow1: #8fe3a8;
+    --glow2: #e8ae4d;
+    --ac-dim: color-mix(in srgb, var(--ac) 12%, transparent);
+    --battery-dim: color-mix(in srgb, var(--battery) 12%, transparent);
+    color-scheme: dark;
+  }
+
+  /* ---------- themes ---------- */
+  [data-theme="midnight"]{
+    --bg:#0b0e1a; --panel:#111527; --panel-2:#171c33; --border:#262d4d; --grid:#1d2340;
+    --text:#e6e9f7; --muted:#8a93bd; --muted-2:#5d668f;
+    --capacity:#7aa2ff; --ac:#ffc861; --battery:#5ee0d0; --voltage:#ff9a7a; --rate:#c08bff; --danger:#ff6b8a;
+    --tooltip-bg:#0d1122; --glow1:#7aa2ff; --glow2:#c08bff;
+  }
+  [data-theme="amber"]{
+    --bg:#0d0a05; --panel:#15100a; --panel-2:#1b150c; --border:#33260f; --grid:#241b0d;
+    --text:#f3e4c4; --muted:#a58f63; --muted-2:#75633f;
+    --capacity:#ffb000; --ac:#ffd36b; --battery:#e87d3e; --voltage:#ff8c42; --rate:#d9a066; --danger:#ff5a3c;
+    --tooltip-bg:#110c06; --glow1:#ffb000; --glow2:#e87d3e;
+  }
+  [data-theme="synthwave"]{
+    --bg:#12081f; --panel:#1a0d2e; --panel-2:#211138; --border:#3a1f5c; --grid:#2a1646;
+    --text:#f5e9ff; --muted:#a68bc9; --muted-2:#75599b;
+    --capacity:#ff4fd8; --ac:#ffe14d; --battery:#38e8ff; --voltage:#ff8a4f; --rate:#9b7bff; --danger:#ff4f6d;
+    --tooltip-bg:#0f0619; --glow1:#ff4fd8; --glow2:#38e8ff;
+  }
+  [data-theme="paper"]{
+    --bg:#f6f2ea; --panel:#fffdf8; --panel-2:#f0ebe0; --border:#ddd5c4; --grid:#e8e1d2;
+    --text:#26231c; --muted:#6f6a5c; --muted-2:#9a9482;
+    --capacity:#1f8a52; --ac:#c47d0e; --battery:#2d6fb0; --voltage:#b5532b; --rate:#8a3fa0; --danger:#c93a3a;
+    --tooltip-bg:#fffdf8; --glow1:#1f8a52; --glow2:#c47d0e;
+    color-scheme: light;
+  }
+  [data-theme="paper"] .tooltip{ box-shadow:0 8px 24px rgba(60,50,30,0.18); }
+  *{ box-sizing:border-box; }
+  html,body{
+    margin:0; padding:0; background:var(--bg); color:var(--text);
+    font-family:'Inter',sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  body{
+    background-image:
+      radial-gradient(circle at 15% 0%, color-mix(in srgb, var(--glow1) 7%, transparent), transparent 40%),
+      radial-gradient(circle at 85% 15%, color-mix(in srgb, var(--glow2) 6%, transparent), transparent 40%);
+  }
+  .wrap{ max-width:1120px; margin:0 auto; padding:40px 24px 80px; }
+
+  /* theme picker */
+  .topbar{ display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; margin-bottom:10px; }
+  .topbar .eyebrow{ margin-bottom:0; }
+  .theme-picker{ display:flex; align-items:center; gap:6px; }
+  .theme-picker .label{ font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted-2); margin-right:4px; }
+  .theme-btn{
+    width:24px; height:24px; border-radius:50%; padding:0; cursor:pointer;
+    border:2px solid var(--border); transition:transform .12s ease, border-color .12s ease;
+  }
+  .theme-btn:hover{ transform:scale(1.12); }
+  .theme-btn.active{ border-color:var(--text); }
+
+  /* header */
+  .eyebrow{
+    display:flex; align-items:center; gap:8px;
+    font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:0.18em;
+    color:var(--capacity); text-transform:uppercase; margin-bottom:10px;
+  }
+  .eyebrow .dot{ width:7px; height:7px; border-radius:50%; background:var(--capacity); box-shadow:0 0 8px var(--capacity); }
+  h1{
+    font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:38px;
+    margin:0 0 8px; letter-spacing:-0.01em;
+  }
+  .sub{ color:var(--muted); font-size:15px; max-width:560px; line-height:1.5; margin-bottom:36px; }
+
+  /* upload */
+  .dropzone{
+    border:1.5px dashed var(--border); border-radius:var(--radius);
+    background:var(--panel);
+    padding:48px 24px; text-align:center; cursor:pointer;
+    transition:border-color .15s ease, background .15s ease;
+    position:relative;
+  }
+  .dropzone:hover{ border-color:var(--muted-2); }
+  .dropzone.drag{ border-color:var(--capacity); background:var(--panel-2); }
+  .dropzone .icon{
+    width:44px; height:44px; margin:0 auto 16px; border-radius:10px;
+    border:1px solid var(--border); display:flex; align-items:center; justify-content:center;
+    color:var(--capacity);
+  }
+  .dropzone .title{ font-family:'IBM Plex Mono',monospace; font-size:13px; letter-spacing:.08em; text-transform:uppercase; color:var(--text); margin-bottom:6px;}
+  .dropzone .hint{ color:var(--muted); font-size:13px; }
+  .dropzone input{ display:none; }
+  .err{ color:var(--danger); font-family:'IBM Plex Mono',monospace; font-size:13px; margin-top:12px; text-align:center; display:none; }
+
+  /* results */
+  #results{ display:none; margin-top:36px; }
+  .toprow{ display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:12px;}
+  .filename{ font-family:'IBM Plex Mono',monospace; font-size:13px; color:var(--muted); }
+  .filename b{ color:var(--text); font-weight:500; }
+  .actions{ display:flex; gap:8px; }
+  .btn{
+    font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:.04em;
+    background:var(--panel); border:1px solid var(--border); color:var(--muted);
+    padding:8px 14px; border-radius:8px; cursor:pointer; transition:all .15s ease;
+  }
+  .btn:hover{ color:var(--text); border-color:var(--muted-2); }
+
+  /* loaded files chips */
+  .files-panel{
+    background:var(--panel); border:1px solid var(--border); border-radius:var(--radius);
+    padding:16px 18px; margin-bottom:22px;
+  }
+  .files-panel-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+  .files-panel-title{ font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:14px; }
+  .file-chips{ display:flex; flex-direction:column; gap:8px; }
+  .file-chip{
+    display:flex; align-items:center; gap:10px; padding:9px 12px;
+    background:var(--panel-2); border:1px solid var(--border); border-radius:10px;
+    transition:opacity .15s ease;
+  }
+  .file-chip.hidden-ds{ opacity:0.4; }
+  .file-chip .swatch{ width:11px; height:11px; border-radius:3px; flex-shrink:0; cursor:pointer; }
+  .file-chip .name{ font-family:'IBM Plex Mono',monospace; font-size:12.5px; flex:1; cursor:pointer; user-select:none; }
+  .file-chip .meta{ font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--muted); white-space:nowrap; }
+  .file-chip .rate-badge{
+    font-family:'IBM Plex Mono',monospace; font-size:11px; padding:3px 8px; border-radius:20px; white-space:nowrap;
+  }
+  .rate-badge.draining{ background:color-mix(in srgb, var(--danger) 12%, transparent); color:var(--danger); }
+  .rate-badge.gaining{ background:color-mix(in srgb, var(--capacity) 12%, transparent); color:var(--capacity); }
+  .rate-badge.na{ background:var(--panel); color:var(--muted-2); border:1px solid var(--border); }
+  .file-chip .remove{
+    background:none; border:none; color:var(--muted-2); cursor:pointer; font-size:15px; padding:2px 4px; line-height:1;
+  }
+  .file-chip .remove:hover{ color:var(--danger); }
+  .add-more-btn{ margin-top:10px; width:100%; }
+
+  /* stat cards */
+  .stats{
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+    gap:10px; margin-bottom:22px;
+  }
+  .stat{
+    background:var(--panel); border:1px solid var(--border); border-radius:10px;
+    padding:14px 16px;
+  }
+  .stat .label{ font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin-bottom:8px; }
+  .stat .value{ font-family:'IBM Plex Mono',monospace; font-size:20px; font-weight:600; color:var(--text); }
+  .stat .value.capacity{ color:var(--capacity); }
+  .stat .value.ac{ color:var(--ac); }
+  .stat .value.battery{ color:var(--battery); }
+  .stat .value.danger{ color:var(--danger); }
+  .stat .sub{ font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--muted-2); margin-top:4px; }
+
+  /* chart panel */
+  .panel{
+    background:var(--panel); border:1px solid var(--border); border-radius:var(--radius);
+    padding:22px 20px 12px; margin-bottom:22px;
+  }
+  .panel-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:10px; }
+  .panel-title{ font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:15px; }
+  .panel-title .note{ font-family:'IBM Plex Mono',monospace; font-weight:400; font-size:11px; color:var(--muted-2); margin-left:8px;}
+  .metric-toggle{ display:flex; gap:4px; background:var(--panel-2); border:1px solid var(--border); border-radius:8px; padding:3px; }
+  .metric-toggle button{
+    font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:.04em;
+    background:transparent; border:none; color:var(--muted); padding:6px 12px;
+    border-radius:6px; cursor:pointer; transition:all .15s ease;
+  }
+  .metric-toggle button.active{ background:var(--panel); color:var(--text); }
+  .metric-toggle button.active[data-metric="capacity"]{ color:var(--capacity); }
+  .metric-toggle button.active[data-metric="voltage"]{ color:var(--voltage); }
+  .metric-toggle button.active[data-metric="rate"]{ color:var(--rate); }
+
+  .chart-container{ position:relative; }
+  svg{ width:100%; height:auto; display:block; overflow:visible; }
+  .gridline{ stroke:var(--grid); stroke-width:1; }
+  .axis-label{ font-family:'IBM Plex Mono',monospace; font-size:10px; fill:var(--muted-2); }
+  .band-ac{ fill:var(--ac-dim); }
+  .band-battery{ fill:var(--battery-dim); }
+  .metric-line{ fill:none; stroke-width:2; stroke-linejoin:round; stroke-linecap:round; }
+  .metric-area{ opacity:0.10; }
+
+  .crosshair{ stroke:var(--muted); stroke-width:1; stroke-dasharray:3 3; opacity:0; pointer-events:none; }
+  .hover-dot circle{ fill:var(--bg); stroke-width:2; }
+  .hover-capture{ fill:transparent; cursor:crosshair; }
+
+  .legend{ display:flex; gap:16px; margin-top:10px; padding-top:12px; border-top:1px solid var(--border); flex-wrap:wrap;}
+  .legend-item{ display:flex; align-items:center; gap:6px; font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--muted); }
+  .legend-swatch{ width:9px; height:9px; border-radius:2px; }
+
+  .tooltip{
+    position:absolute; pointer-events:none; opacity:0; transition:opacity .1s ease;
+    background:var(--tooltip-bg); border:1px solid var(--border); border-radius:8px;
+    padding:9px 12px; font-family:'IBM Plex Mono',monospace; font-size:12px;
+    box-shadow:0 8px 24px rgba(0,0,0,0.45);
+    transform:translate(-50%, -100%); margin-top:-14px;
+    white-space:nowrap; z-index:5;
+  }
+  .tooltip .t-time{ color:var(--muted); font-size:10px; margin-bottom:6px; letter-spacing:.03em; }
+  .tooltip .t-row{ display:flex; align-items:center; gap:6px; font-size:13px; font-weight:600; margin-top:3px; }
+  .tooltip .t-row .sw{ width:8px; height:8px; border-radius:2px; flex-shrink:0; }
+  .tooltip .t-state{ margin-top:6px; font-size:10px; color:var(--muted); }
+
+  /* table */
+  .table-head-row{ display:flex; justify-content:space-between; align-items:center; }
+  select.file-select{
+    font-family:'IBM Plex Mono',monospace; font-size:12px; background:var(--panel-2);
+    border:1px solid var(--border); color:var(--text); padding:7px 10px; border-radius:8px;
+  }
+  .table-wrap{ max-height:340px; overflow:auto; border:1px solid var(--border); border-radius:10px; }
+  table{ width:100%; border-collapse:collapse; font-family:'IBM Plex Mono',monospace; font-size:12px; }
+  thead th{
+    position:sticky; top:0; background:var(--panel-2); text-align:left; padding:10px 12px;
+    color:var(--muted); font-weight:500; letter-spacing:.05em; text-transform:uppercase; font-size:10px;
+    border-bottom:1px solid var(--border);
+  }
+  tbody td{ padding:8px 12px; border-bottom:1px solid var(--grid); color:var(--text); }
+  tbody tr:hover{ background:var(--panel-2); }
+  .pill{ display:inline-block; padding:2px 8px; border-radius:20px; font-size:10px; }
+  .pill.ac{ background:var(--ac-dim); color:var(--ac); }
+  .pill.battery{ background:var(--battery-dim); color:var(--battery); }
+
+  ::-webkit-scrollbar{ width:8px; height:8px; }
+  ::-webkit-scrollbar-thumb{ background:var(--border); border-radius:4px; }
+  ::-webkit-scrollbar-track{ background:transparent; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topbar"><div class="eyebrow"><span class="dot"></span>Power Diagnostics</div><div class="theme-picker" id="themePicker" aria-label="Theme"></div></div>
+  <h1>Battery Log Analyzer</h1>
+  <div class="sub">Drop in raw battery event logs and get a scannable read on charge behavior over time — capacity, voltage, and AC/battery state. Load multiple logs to compare test runs on the same chart.</div>
+
+  <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Upload log files">
+    <div class="icon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 8 5-5 5 5"/><path d="M5 21h14"/></svg>
+    </div>
+    <div class="title">Drop log files</div>
+    <div class="hint">or click to browse · .txt log exports · multiple files supported</div>
+    <input type="file" id="fileInput" accept=".txt,text/plain" multiple>
+  </div>
+  <div class="err" id="errMsg"></div>
+
+  <div id="results">
+
+    <div class="files-panel">
+      <div class="files-panel-head">
+        <div class="files-panel-title">Loaded logs</div>
+        <div class="filename" id="fileCount"></div>
+      </div>
+      <div class="file-chips" id="fileChips"></div>
+      <button class="btn add-more-btn" id="addMore">+ Add more logs</button>
+    </div>
+
+    <div class="stats" id="stats"></div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">Timeline <span class="note" id="xAxisNote"></span></div>
+        <div class="metric-toggle" id="metricToggle">
+          <button data-metric="capacity" class="active">% Capacity</button>
+          <button data-metric="voltage">Voltage</button>
+          <button data-metric="rate">Rate</button>
+        </div>
+      </div>
+      <div class="chart-container" id="chartContainer">
+        <!-- svg injected here -->
+        <div class="tooltip" id="tooltip"></div>
+      </div>
+      <div class="legend" id="legend"></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head table-head-row">
+        <div class="panel-title">Raw events</div>
+        <div style="display:flex; gap:10px; align-items:center;">
+          <select class="file-select" id="fileSelect"></select>
+          <button class="btn" id="exportCsv">Export CSV</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Time</th><th>Power state</th><th>% Capacity</th><th>Capacity value</th><th>Rate</th><th>Voltage</th><th>Event type</th></tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function(){
+  const dropzone = document.getElementById('dropzone');
+  const fileInput = document.getElementById('fileInput');
+  const errMsg = document.getElementById('errMsg');
+  const results = document.getElementById('results');
+
+  const currentPalette = () => THEMES[themeId].palette;
+
+  let DATASETS = []; // {id, name, color, events, visible}
+  let currentMetric = 'capacity';
+  let dsCounter = 0;
+
+  // ---------- upload handling ----------
+  dropzone.addEventListener('click', () => fileInput.click());
+  dropzone.addEventListener('keydown', e => { if(e.key==='Enter'||e.key===' ') fileInput.click(); });
+  ['dragenter','dragover'].forEach(evt => dropzone.addEventListener(evt, e=>{
+    e.preventDefault(); dropzone.classList.add('drag');
+  }));
+  ['dragleave','drop'].forEach(evt => dropzone.addEventListener(evt, e=>{
+    e.preventDefault(); dropzone.classList.remove('drag');
+  }));
+  dropzone.addEventListener('drop', e=>{
+    handleFiles(e.dataTransfer.files);
+  });
+  fileInput.addEventListener('change', e=>{
+    handleFiles(e.target.files);
+    fileInput.value='';
+  });
+  document.getElementById('addMore').addEventListener('click', ()=> fileInput.click());
+
+  function handleFiles(fileList){
+    errMsg.style.display='none';
+    const files = Array.from(fileList);
+    if(!files.length) return;
+    let remaining = files.length;
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = e => {
+        remaining--;
+        try{
+          const bytes = new Uint8Array(e.target.result);
+          const text = decodeBytes(bytes);
+          const events = parseLog(text);
+          if(events.length === 0) throw new Error('no events found in ' + file.name);
+          dsCounter++;
+          DATASETS.push({
+            id: 'ds'+dsCounter,
+            name: file.name,
+            color: currentPalette()[DATASETS.length % currentPalette().length],
+            events,
+            visible: true
+          });
+        }catch(err){
+          errMsg.textContent = 'Could not parse ' + file.name + ' — ' + err.message;
+          errMsg.style.display='block';
+        }
+        if(remaining === 0){
+          if(DATASETS.length){
+            results.style.display='block';
+            render();
+            results.scrollIntoView({behavior:'smooth', block:'start'});
+          }
+        }
+      };
+      reader.onerror = () => {
+        remaining--;
+        errMsg.textContent = 'Could not read ' + file.name;
+        errMsg.style.display='block';
+      };
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
+  function decodeBytes(bytes){
+    if(bytes.length >= 2 && bytes[0]===0xFF && bytes[1]===0xFE){
+      return new TextDecoder('utf-16le').decode(bytes.subarray(2));
+    }
+    if(bytes.length >= 2 && bytes[0]===0xFE && bytes[1]===0xFF){
+      return new TextDecoder('utf-16be').decode(bytes.subarray(2));
+    }
+    if(bytes.length >= 3 && bytes[0]===0xEF && bytes[1]===0xBB && bytes[2]===0xBF){
+      return new TextDecoder('utf-8').decode(bytes.subarray(3));
+    }
+    return new TextDecoder('utf-8').decode(bytes);
+  }
+
+  // ---------- parsing ----------
+  function parseLog(text){
+    const chunks = text.split(/^=+\s*$/m).map(c=>c.trim()).filter(c=>c.length);
+    const events = [];
+    for(const chunk of chunks){
+      const lines = chunk.split(/\r?\n/);
+      const kv = {};
+      for(const line of lines){
+        const m = line.match(/^\s*([A-Za-z% ]+?)\s*:\s*(.+?)\s*$/);
+        if(m) kv[m[1].trim()] = m[2].trim();
+      }
+      if(!kv['Event Time']) continue;
+      const time = parseTime(kv['Event Time']);
+      if(!time) continue;
+      const powerRaw = (kv['Power State']||'').toLowerCase();
+      events.push({
+        time,
+        timeStr: kv['Event Time'],
+        powerState: powerRaw.includes('ac') ? 'AC' : 'Battery',
+        isCharging: powerRaw.includes('charging'),
+        powerStateRaw: kv['Power State']||'—',
+        capacityPct: parseFloat((kv['% Capacity']||'').replace('%','')) || 0,
+        capacityValue: parseNum(kv['Capacity Value']),
+        rate: parseNum(kv['Rate']),
+        voltage: parseNum(kv['Voltage']),
+        eventType: kv['Event Type']||'—'
+      });
+    }
+    events.sort((a,b)=>a.time-b.time);
+    return events;
+  }
+
+  function parseNum(s){
+    if(s===undefined) return 0;
+    const n = parseFloat(s.replace(/,/g,''));
+    return isNaN(n) ? 0 : n;
+  }
+
+  function parseTime(str){
+    // Old format: DD-MM-YYYY HH:mm:ss (24h)
+    let m = str.match(/^(\d{1,2})-(\d{1,2})-(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})/);
+    if(m){
+      const [, dd, mm, yyyy, hh, mi, ss] = m;
+      return new Date(+yyyy, +mm-1, +dd, +hh, +mi, +ss);
+    }
+    // New format: M/D/YYYY h:mm:ss AM/PM (US locale)
+    m = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4}),?\s+(\d{1,2}):(\d{2}):(\d{2})\s*([AaPp][Mm])?/);
+    if(m){
+      let [, a, b, yyyy, hh, mi, ss, ap] = m;
+      a = +a; b = +b; hh = +hh;
+      // default M/D; if first number can't be a month, it must be D/M
+      let month = a, day = b;
+      if(a > 12){ day = a; month = b; }
+      if(ap){
+        const pm = ap.toLowerCase()==='pm';
+        if(pm && hh < 12) hh += 12;
+        if(!pm && hh === 12) hh = 0;
+      }
+      return new Date(+yyyy, month-1, day, hh, +mi, +ss);
+    }
+    return null;
+  }
+
+  // ---------- derived metrics ----------
+  function avg(arr){ return arr.reduce((a,b)=>a+b,0)/arr.length; }
+
+  function chargingDropRate(events){
+    // average %/hr change while in a charging state. Negative = still losing charge despite charging.
+    let totalChangePct = 0, totalHours = 0;
+    for(let i=0;i<events.length-1;i++){
+      if(!events[i].isCharging) continue;
+      const dtHr = (events[i+1].time - events[i].time)/3600000;
+      if(dtHr <= 0) continue;
+      totalChangePct += (events[i+1].capacityPct - events[i].capacityPct);
+      totalHours += dtHr;
+    }
+    if(totalHours === 0) return null;
+    return totalChangePct/totalHours;
+  }
+
+  function fmtDuration(ms){
+    let s = Math.floor(ms/1000);
+    const d = Math.floor(s/86400); s -= d*86400;
+    const h = Math.floor(s/3600); s -= h*3600;
+    const m = Math.floor(s/60);
+    const parts = [];
+    if(d) parts.push(d+'d');
+    if(h||d) parts.push(h+'h');
+    parts.push(m+'m');
+    return parts.join(' ');
+  }
+
+  // ---------- render orchestration ----------
+  function render(){
+    renderFileChips();
+    renderStats();
+    renderFileSelect();
+    renderTable();
+    document.querySelectorAll('#metricToggle button').forEach(b=>{
+      b.classList.toggle('active', b.dataset.metric===currentMetric);
+    });
+    renderChart();
+  }
+
+  document.getElementById('metricToggle').addEventListener('click', e=>{
+    const btn = e.target.closest('button');
+    if(!btn) return;
+    currentMetric = btn.dataset.metric;
+    document.querySelectorAll('#metricToggle button').forEach(b=>b.classList.toggle('active', b===btn));
+    renderChart();
+  });
+
+  // ---------- file chips ----------
+  function renderFileChips(){
+    document.getElementById('fileCount').textContent = DATASETS.length + (DATASETS.length===1?' file':' files');
+    const wrap = document.getElementById('fileChips');
+    wrap.innerHTML = DATASETS.map(ds => {
+      const rate = chargingDropRate(ds.events);
+      let badge;
+      if(rate === null){ badge = `<span class="rate-badge na">no charging data</span>`; }
+      else if(rate < -0.05){ badge = `<span class="rate-badge draining">still draining ${rate.toFixed(1)}%/hr while charging</span>`; }
+      else { badge = `<span class="rate-badge gaining">+${rate.toFixed(1)}%/hr while charging</span>`; }
+      return `
+        <div class="file-chip ${ds.visible?'':'hidden-ds'}" data-id="${ds.id}">
+          <span class="swatch" style="background:${ds.color}" data-toggle="${ds.id}"></span>
+          <span class="name" data-toggle="${ds.id}">${ds.name}</span>
+          <span class="meta">${ds.events.length} samples</span>
+          ${badge}
+          <button class="remove" data-remove="${ds.id}" title="Remove">×</button>
+        </div>`;
+    }).join('');
+    wrap.querySelectorAll('[data-toggle]').forEach(el=>{
+      el.addEventListener('click', ()=>{
+        const ds = DATASETS.find(d=>d.id===el.dataset.toggle);
+        ds.visible = !ds.visible;
+        render();
+      });
+    });
+    wrap.querySelectorAll('[data-remove]').forEach(el=>{
+      el.addEventListener('click', ()=>{
+        DATASETS = DATASETS.filter(d=>d.id!==el.dataset.remove);
+        if(DATASETS.length===0){ results.style.display='none'; return; }
+        render();
+      });
+    });
+  }
+
+  function renderFileSelect(){
+    const sel = document.getElementById('fileSelect');
+    const prev = sel.value;
+    sel.innerHTML = DATASETS.map(ds=>`<option value="${ds.id}">${ds.name}</option>`).join('');
+    if(DATASETS.some(d=>d.id===prev)) sel.value = prev;
+    sel.onchange = renderTable;
+  }
+
+  // ---------- stats ----------
+  function renderStats(){
+    const visible = DATASETS.filter(d=>d.visible);
+    const allEvents = visible.flatMap(d=>d.events);
+    if(!allEvents.length){ document.getElementById('stats').innerHTML=''; return; }
+
+    const caps = allEvents.map(e=>e.capacityPct);
+    const volts = allEvents.map(e=>e.voltage);
+
+    let acMs=0, battMs=0, totalMs=0;
+    let chargeChange=0, chargeHours=0;
+    visible.forEach(ds=>{
+      const ev = ds.events;
+      totalMs += ev[ev.length-1].time - ev[0].time;
+      for(let i=0;i<ev.length-1;i++){
+        const span = ev[i+1].time - ev[i].time;
+        if(ev[i].powerState==='AC') acMs += span; else battMs += span;
+        if(ev[i].isCharging){
+          const dtHr = span/3600000;
+          chargeChange += (ev[i+1].capacityPct - ev[i].capacityPct);
+          chargeHours += dtHr;
+        }
+      }
+    });
+    const chargeRate = chargeHours>0 ? chargeChange/chargeHours : null;
+
+    const stats = [
+      {label:'Logs loaded', value:visible.length, cls:''},
+      {label:'Total samples', value:allEvents.length, cls:''},
+      {label:'Combined duration', value:fmtDuration(totalMs), cls:''},
+      {label:'Avg capacity', value:avg(caps).toFixed(1)+'%', cls:'capacity'},
+      {label:'Min / Max capacity', value:Math.min(...caps).toFixed(1)+'% / '+Math.max(...caps).toFixed(1)+'%', cls:'capacity'},
+      {label:'Avg voltage', value:Math.round(avg(volts)).toLocaleString(), cls:''},
+      {label:'Time on AC', value:fmtDuration(acMs), cls:'ac'},
+      {label:'Time on battery', value:fmtDuration(battMs), cls:'battery'},
+      {label:'Avg %/hr while charging', value: chargeRate===null ? 'N/A' : (chargeRate>=0?'+':'')+chargeRate.toFixed(2)+'%/hr',
+        sub: chargeRate===null ? 'no charging intervals found' : (chargeRate<0 ? 'net capacity loss despite charging' : 'net capacity gain while charging'),
+        cls: chargeRate===null ? '' : (chargeRate<0 ? 'danger' : 'capacity')},
+    ];
+    document.getElementById('stats').innerHTML = stats.map(s=>`
+      <div class="stat">
+        <div class="label">${s.label}</div>
+        <div class="value ${s.cls}">${s.value}</div>
+        ${s.sub?`<div class="sub">${s.sub}</div>`:''}
+      </div>`).join('');
+  }
+
+  // ---------- table ----------
+  function renderTable(){
+    const sel = document.getElementById('fileSelect');
+    const ds = DATASETS.find(d=>d.id===sel.value) || DATASETS[0];
+    const tbody = document.getElementById('tbody');
+    if(!ds){ tbody.innerHTML=''; return; }
+    tbody.innerHTML = ds.events.map(ev => `
+      <tr>
+        <td>${ev.timeStr}</td>
+        <td><span class="pill ${ev.powerState==='AC'?'ac':'battery'}">${ev.powerStateRaw}</span></td>
+        <td>${ev.capacityPct.toFixed(1)}%</td>
+        <td>${ev.capacityValue.toLocaleString()}</td>
+        <td>${ev.rate.toLocaleString()}</td>
+        <td>${ev.voltage.toLocaleString()}</td>
+        <td>${ev.eventType}</td>
+      </tr>`).join('');
+    document.getElementById('exportCsv').onclick = () => exportCsv(ds);
+  }
+
+  function exportCsv(ds){
+    const header = 'Time,Power State,% Capacity,Capacity Value,Rate,Voltage,Event Type\n';
+    const rows = ds.events.map(ev => [ev.timeStr, ev.powerStateRaw, ev.capacityPct, ev.capacityValue, ev.rate, ev.voltage, ev.eventType].join(',')).join('\n');
+    const blob = new Blob([header+rows], {type:'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = ds.name.replace(/\.[^.]+$/,'') + '-parsed.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // ---------- chart ----------
+  const METRIC_CFG = {
+    capacity: {key:'capacityPct', label:'% Capacity', unit:'%', decimals:1},
+    voltage: {key:'voltage', label:'Voltage', unit:'', decimals:0},
+    rate: {key:'rate', label:'Rate', unit:'', decimals:0},
+  };
+
+  function renderChart(){
+    const container = document.getElementById('chartContainer');
+    const cfg = METRIC_CFG[currentMetric];
+    const visible = DATASETS.filter(d=>d.visible && d.events.length);
+    const xNote = document.getElementById('xAxisNote');
+
+    if(!visible.length){ container.querySelector('svg')?.remove(); document.getElementById('legend').innerHTML=''; return; }
+
+    const multi = visible.length > 1;
+    xNote.textContent = multi ? '· elapsed time since each log\u2019s start (for comparison)' : '';
+
+    const W = 1000, H = 380;
+    const margin = {top:16, right:16, bottom:32, left:56};
+    const plotW = W - margin.left - margin.right;
+    const plotH = H - margin.top - margin.bottom;
+
+    // precompute elapsed-ms per dataset (elapsed since that dataset's own first event)
+    const series = visible.map(ds => {
+      const t0 = ds.events[0].time.getTime();
+      return {
+        ds,
+        points: ds.events.map(e => ({ x: e.time.getTime()-t0, y: e[cfg.key], ev: e }))
+      };
+    });
+
+    const xMax = Math.max(...series.map(s => s.points[s.points.length-1].x), 1);
+    const xMin = 0;
+
+    const allVals = series.flatMap(s=>s.points.map(p=>p.y));
+    let vMin = Math.min(...allVals), vMax = Math.max(...allVals);
+    if(vMin === vMax){ vMin -= 1; vMax += 1; }
+    const pad = (vMax - vMin) * 0.12;
+    vMin -= pad; vMax += pad;
+    if(currentMetric==='capacity'){ vMin = Math.max(0, vMin); vMax = Math.min(100, Math.max(vMax,1)); }
+
+    const xScale = x => margin.left + ((x - xMin)/(xMax - xMin || 1)) * plotW;
+    const yScale = v => margin.top + plotH - ((v - vMin)/(vMax - vMin || 1)) * plotH;
+
+    // AC/battery bands only make sense for a single dataset
+    let bands = '';
+    if(!multi){
+      const ds = visible[0];
+      const t0 = ds.events[0].time.getTime();
+      for(let i=0;i<ds.events.length;i++){
+        const startX = ds.events[i].time.getTime()-t0;
+        const endX = i < ds.events.length-1 ? ds.events[i+1].time.getTime()-t0 : startX;
+        if(endX===startX && i===ds.events.length-1) continue;
+        const x1 = xScale(startX), x2 = xScale(endX);
+        const cls = ds.events[i].powerState==='AC' ? 'band-ac' : 'band-battery';
+        bands += `<rect class="${cls}" x="${x1}" y="${margin.top}" width="${Math.max(x2-x1,0)}" height="${plotH}"></rect>`;
+      }
+    }
+
+    // gridlines + y labels
+    let grid = '', yLabels = '';
+    const yTicks = 9;
+    for(let i=0;i<=yTicks;i++){
+      const v = vMin + (vMax-vMin)*(i/yTicks);
+      const y = yScale(v);
+      grid += `<line class="gridline" x1="${margin.left}" x2="${W-margin.right}" y1="${y}" y2="${y}"></line>`;
+      yLabels += `<text class="axis-label" x="${margin.left-10}" y="${y+3}" text-anchor="end">${v.toFixed(cfg.decimals)}${cfg.unit}</text>`;
+    }
+
+    // x labels + vertical gridlines
+    let xLabels = '';
+    const xTicks = 10;
+    for(let i=0;i<=xTicks;i++){
+      const xv = xMin + (xMax-xMin)*(i/xTicks);
+      const x = xScale(xv);
+      const label = multi ? fmtElapsed(xv) : new Date(visible[0].events[0].time.getTime()+xv).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+      grid += `<line class="gridline" x1="${x}" x2="${x}" y1="${margin.top}" y2="${margin.top+plotH}"></line>`;
+      xLabels += `<text class="axis-label" x="${x}" y="${H-margin.bottom+18}" text-anchor="middle">${label}</text>`;
+    }
+
+    // lines
+    let lines = '';
+    series.forEach(s => {
+      let linePath = '';
+      s.points.forEach((p,i)=>{
+        const x = xScale(p.x), y = yScale(p.y);
+        linePath += (i===0?'M':'L') + x.toFixed(2) + ',' + y.toFixed(2) + ' ';
+      });
+      const areaPath = linePath + `L${xScale(s.points[s.points.length-1].x).toFixed(2)},${margin.top+plotH} L${xScale(s.points[0].x).toFixed(2)},${margin.top+plotH} Z`;
+      lines += `<path class="metric-area" style="fill:${s.ds.color}" d="${areaPath}"></path>`;
+      lines += `<path class="metric-line" style="stroke:${s.ds.color}" d="${linePath}"></path>`;
+    });
+
+    // hover elements per series
+    let hoverDots = '';
+    series.forEach(s => {
+      hoverDots += `<g class="hover-dot" data-hd="${s.ds.id}" style="opacity:0"><circle r="4.5" style="stroke:${s.ds.color}"></circle></g>`;
+    });
+
+    const svg = `
+      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
+        ${bands}
+        ${grid}
+        ${lines}
+        ${yLabels}
+        ${xLabels}
+        <line id="crosshair" class="crosshair" x1="0" x2="0" y1="${margin.top}" y2="${margin.top+plotH}"></line>
+        ${hoverDots}
+        <rect class="hover-capture" x="${margin.left}" y="${margin.top}" width="${plotW}" height="${plotH}"></rect>
+      </svg>
+    `;
+    container.querySelector('svg')?.remove();
+    container.insertAdjacentHTML('afterbegin', svg);
+
+    document.getElementById('legend').innerHTML = series.map(s=>`
+      <div class="legend-item"><span class="legend-swatch" style="background:${s.ds.color}"></span>${s.ds.name}</div>
+    `).join('') + (!multi ? `
+      <div class="legend-item"><span class="legend-swatch" style="background:var(--ac)"></span>AC power</div>
+      <div class="legend-item"><span class="legend-swatch" style="background:var(--battery)"></span>Battery power</div>
+    ` : '');
+
+    // hover interactivity
+    const svgEl = container.querySelector('svg');
+    const capture = svgEl.querySelector('.hover-capture');
+    const crosshair = svgEl.querySelector('#crosshair');
+    const tooltip = document.getElementById('tooltip');
+
+    function nearestPoint(points, xVal){
+      let lo=0, hi=points.length-1;
+      while(lo<hi){
+        const mid=(lo+hi)>>1;
+        if(points[mid].x < xVal) lo=mid+1; else hi=mid;
+      }
+      if(lo>0 && Math.abs(points[lo-1].x-xVal) < Math.abs(points[lo].x-xVal)) lo -= 1;
+      return points[lo];
+    }
+
+    function onMove(clientX){
+      const rect = svgEl.getBoundingClientRect();
+      const scaleX = W / rect.width;
+      const mx = (clientX - rect.left) * scaleX;
+      const clampedX = Math.min(Math.max(mx, margin.left), W - margin.right);
+      const xv = xMin + ((clampedX - margin.left)/plotW) * (xMax-xMin);
+      const x = xScale(xv);
+
+      crosshair.setAttribute('x1', x); crosshair.setAttribute('x2', x);
+      crosshair.style.opacity = 1;
+
+      let rows = '';
+      let refTimeStr = '';
+      series.forEach(s => {
+        const pt = nearestPoint(s.points, xv);
+        const y = yScale(pt.y);
+        const dot = svgEl.querySelector(`[data-hd="${s.ds.id}"]`);
+        dot.style.opacity = 1;
+        dot.setAttribute('transform', `translate(${x},${y})`);
+        if(!refTimeStr) refTimeStr = pt.ev.timeStr;
+        rows += `<div class="t-row"><span class="sw" style="background:${s.ds.color}"></span>${pt.ev[cfg.key].toFixed(cfg.decimals)}${cfg.unit}${multi ? ` <span style="color:var(--muted); font-weight:400; font-size:10px;">(${s.ds.name}, ${fmtElapsed(pt.x)})</span>` : ''}</div>`;
+      });
+
+      const rectContainer = container.getBoundingClientRect();
+      const pixelX = (x/W) * rectContainer.width;
+      const topDot = svgEl.querySelectorAll('.hover-dot')[0];
+      const firstY = yScale(nearestPoint(series[0].points, xv).y);
+      const pixelY = (firstY/H) * (rectContainer.width * (H/W));
+
+      tooltip.style.left = pixelX + 'px';
+      tooltip.style.top = Math.max(pixelY, 20) + 'px';
+      tooltip.style.opacity = 1;
+      tooltip.innerHTML = `<div class="t-time">${multi ? fmtElapsed(xv) : refTimeStr}</div>${rows}`;
+    }
+
+    capture.addEventListener('mousemove', e => onMove(e.clientX));
+    capture.addEventListener('mouseleave', () => {
+      crosshair.style.opacity = 0;
+      svgEl.querySelectorAll('.hover-dot').forEach(d=>d.style.opacity=0);
+      tooltip.style.opacity = 0;
+    });
+    capture.addEventListener('touchmove', e => {
+      e.preventDefault();
+      onMove(e.touches[0].clientX);
+    }, {passive:false});
+    capture.addEventListener('touchend', () => {
+      crosshair.style.opacity = 0;
+      svgEl.querySelectorAll('.hover-dot').forEach(d=>d.style.opacity=0);
+      tooltip.style.opacity = 0;
+    });
+  }
+
+  function fmtElapsed(ms){
+    const totalMin = Math.round(ms/60000);
+    const h = Math.floor(totalMin/60);
+    const m = totalMin % 60;
+    return h>0 ? `${h}h ${m}m` : `${m}m`;
+  }
+
+
+  // ---------- themes ----------
+  const THEMES = {
+    phosphor:  {label:'Phosphor',  preview:['#0a100d','#8fe3a8'], palette:['#8fe3a8','#d88f5f','#5fa3d8','#c97fd1','#e8ae4d','#e36f6f','#7fd1c9','#d1c97f','#a8b8e3','#e38fc9']},
+    midnight:  {label:'Midnight',  preview:['#0b0e1a','#7aa2ff'], palette:['#7aa2ff','#ffc861','#5ee0d0','#ff9a7a','#c08bff','#ff6b8a','#9be37a','#f0e68c','#8fd0ff','#ffa8d8']},
+    amber:     {label:'Amber CRT', preview:['#0d0a05','#ffb000'], palette:['#ffb000','#e87d3e','#ffd36b','#d9a066','#ff5a3c','#c4b27a','#ff8c42','#f0c27b','#b5873f','#ffe0a0']},
+    synthwave: {label:'Synthwave', preview:['#12081f','#ff4fd8'], palette:['#ff4fd8','#38e8ff','#ffe14d','#9b7bff','#ff8a4f','#6bff9e','#ff4f6d','#7bb5ff','#e0a8ff','#ffd0f0']},
+    paper:     {label:'Paper',     preview:['#f6f2ea','#1f8a52'], palette:['#1f8a52','#b5532b','#2d6fb0','#8a3fa0','#c47d0e','#c93a3a','#1f8a8a','#7a7a1f','#4a5bb0','#b0306e']},
+  };
+  let themeId = 'phosphor';
+  try{ const saved = localStorage.getItem('battery-log-theme'); if(saved && THEMES[saved]) themeId = saved; }catch(e){}
+
+  function renderThemePicker(){
+    const el = document.getElementById('themePicker');
+    el.innerHTML = '<span class="label">Theme</span>' + Object.entries(THEMES).map(([id,t]) =>
+      `<button class="theme-btn ${id===themeId?'active':''}" data-theme-id="${id}" title="${t.label}" aria-label="${t.label} theme" style="background:linear-gradient(135deg, ${t.preview[0]} 50%, ${t.preview[1]} 50%)"></button>`
+    ).join('');
+    el.querySelectorAll('[data-theme-id]').forEach(b => b.addEventListener('click', () => applyTheme(b.dataset.themeId, true)));
+  }
+
+  function applyTheme(id, persist){
+    themeId = id;
+    document.documentElement.dataset.theme = id;
+    if(persist){ try{ localStorage.setItem('battery-log-theme', id); }catch(e){} }
+    const pal = currentPalette();
+    DATASETS.forEach((ds,i)=>{ ds.color = pal[i % pal.length]; });
+    renderThemePicker();
+    if(DATASETS.length) render();
+  }
+
+  applyTheme(themeId, false);
+
+})();
+</script>
+</body>
+</html>
